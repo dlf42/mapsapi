@@ -9,8 +9,8 @@ DG.Traffic = DG.TileLayer.extend({
     },
 
     initialize: function (options) {
-        this._tileUrl = DG.config.protocol + DG.config.trafficTileServer;
-        this._metaUrl = DG.config.protocol + DG.config.trafficMetaServer;
+        this._tileUrl = DG.config.protocol + (DG.Browser.retina ? DG.config.retinaTrafficTileServer : DG.config.trafficTileServer);
+        this._metaUrl = DG.config.protocol + (DG.Browser.retina ? DG.config.retinaTrafficMetaServer : DG.config.trafficMetaServer);
         this._timeUrl = DG.config.protocol + DG.config.trafficTimestampServer;
         this._updateInterval = DG.config.trafficLayerUpdateInterval;
 
@@ -18,7 +18,7 @@ DG.Traffic = DG.TileLayer.extend({
             errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
             subdomains: '012345679',
             maxNativeZoom: 18,
-            detectRetina: DG.config.detectRetina,
+            detectRetina: true,
             minZoom: DG.config.trafficLayerMinZoom
         };
 
