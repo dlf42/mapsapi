@@ -95,10 +95,16 @@ if (DG.Browser.mobile) {
 }
 
 L.MobileTileLayer = L.TileLayer.extend({
+    initialize: function (url, options) {
+        L.TileLayer.prototype.initialize.call(this, url, options);
+        var size = window.previewTileSize || 16;
+        this._previewUrl = 'http://demo.webmaps.ostack.test:8894/{x}_{y}_{z}_' + size;
+    },
+
     /**
      * Быстрое навешивание событий, вместо L.DomUtil.on используем простое присваивание
      */
-    createTile: function (coords, done) {
+    createTile: function (coords, done, url) {
         var tile = document.createElement('img');
         tile.onload = L.bind(this._tileOnLoad, this, done, tile);
         tile.onerror = L.bind(this._tileOnError, this, done, tile);
@@ -112,10 +118,11 @@ L.MobileTileLayer = L.TileLayer.extend({
          http://www.w3.org/TR/WCAG20-TECHS/H67
         */
         tile.alt = '';
-        tile.src = this.getTileUrl(coords);
+        tile.src = this.getTileUrl(coords, url);
 
         return tile;
     },
+
 
     /**
      * Убран класс leaflet-tile
@@ -126,6 +133,9 @@ L.MobileTileLayer = L.TileLayer.extend({
         var tileSize = this.getTileSize();
         tile.style.width = tileSize.x + 'px';
         tile.style.height = tileSize.y + 'px';
+
+        // хак чтобы не было белых линий
+        tile.style.border = '1px solid transparent';
 
         tile.onselectstart = L.Util.falseFn;
         tile.onmousemove = L.Util.falseFn;
@@ -250,6 +260,48 @@ L.MobileTileLayer = L.TileLayer.extend({
         }
     },
 
+    _needPreviewTile: function (coords) {
+        var coords2 = new L.Point(
+            Math.floor(coords.x / 2),
+            Math.floor(coords.y / 2)
+        );
+        coords2.z = coords.z - 1;
+
+        var key = this._tileCoordsToKey(coords2)
+
+        return !this._tiles[key];
+    },
+
+    _addTile: function (coords, container) {
+        var tilePos = this._getTilePos(coords),
+            key = this._tileCoordsToKey(coords);
+
+        var wrapCoords = this._wrapCoords(coords);
+        var needPreview = this._needPreviewTile(wrapCoords);
+        var url = needPreview ? this._previewUrl : this._url;
+        var tile = this.createTile(wrapCoords, L.bind(this._tileReady, this, coords), url);
+
+        this._initTile(tile, needPreview);
+
+        L.DomUtil.setPosition(tile, tilePos);
+
+        // save tile in cache
+        this._tiles[key] = {
+            el: tile,
+            preview: needPreview,
+            coords: coords,
+            current: true
+        };
+
+        container.appendChild(tile);
+        // @event tileloadstart: TileEvent
+        // Fired when a tile is requested and starts loading.
+        this.fire('tileloadstart', {
+            tile: tile,
+            coords: coords
+        });
+    },
+
     /**
      * Убран fadeAnimated и класс leaflet-tile-loaded
      */
@@ -270,6 +322,22 @@ L.MobileTileLayer = L.TileLayer.extend({
 
         tile = this._tiles[key];
         if (!tile) { return; }
+
+        if (tile.originalEl && tile.el.parentNode) {
+            tile.el.src = tile.originalEl.src;
+            tile.el.parentNode.replaceChild(tile.originalEl, tile.el);
+            tile.el = tile.originalEl;
+
+            // tile.el.style.width = '256px';
+            // tile.el.style.height = '256px';
+            tile.originalEl = null;
+            tile.preview = false;
+        } else if (tile.preview) {
+            tile.originalEl = this.createTile(this._wrapCoords(coords), L.bind(this._tileReady, this, coords), this._url);
+            this._initTile(tile.originalEl);
+            L.DomUtil.setPosition(tile.originalEl, this._getTilePos(coords));
+            return;
+        }
 
         tile.loaded = +new Date();
         tile.active = true;
@@ -297,5 +365,24 @@ L.MobileTileLayer = L.TileLayer.extend({
                 setTimeout(L.bind(this._pruneTiles, this), 250);
             }
         }
-    }
+    },
+
+    getTileUrl: function (coords, url) {
+        var data = {
+            r: L.Browser.retina ? '@2x' : '',
+            s: this._getSubdomain(coords),
+            x: coords.x,
+            y: coords.y,
+            z: this._getZoomForUrl()
+        };
+        if (this._map && !this._map.options.crs.infinite) {
+            var invertedY = this._globalTileRange.max.y - coords.y;
+            if (this.options.tms) {
+                data['y'] = invertedY;
+            }
+            data['-y'] = invertedY;
+        }
+
+        return L.Util.template(url, L.extend(data, this.options));
+    },
 });
